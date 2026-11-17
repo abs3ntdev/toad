@@ -49,6 +49,27 @@ async def test_two_workers_deliver_reports(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_await_after_finish_claims_report(tmp_path):
+    """A swarm_await made after a worker finished, but before the deferred
+    flush, claims the report so take_unreported does not resend it."""
+    client = make_client(tmp_path)
+    manager = SwarmManager(client, deliver=lambda report: None)
+    try:
+        await manager.spawn("w", "quick")
+        await manager.workers["w"]._turn_task
+        await call_tool(manager, "swarm_await", {"names": ["w"]})
+        assert manager.take_unreported() == []
+        await manager.message("w", "again")
+        await manager.workers["w"]._turn_task
+        assert manager.take_unreported() == [
+            "[swarm] worker 'w' finished:\n\ndone: again"
+        ]
+        assert manager.take_unreported() == []
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_await_suppresses_delivery_and_message(tmp_path):
     client = make_client(tmp_path)
     delivered: list[str] = []

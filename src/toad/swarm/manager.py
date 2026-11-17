@@ -48,6 +48,7 @@ class Worker:
     error: str = ""
     turns: int = 0
     reported_turns: int = 0
+    stop_reason: str | None = None
     started: float = field(default_factory=time.monotonic)
     _current: list[str] = field(default_factory=list)
     _turn_task: asyncio.Task | None = None
@@ -224,6 +225,19 @@ class SwarmManager:
                 worker.reported_turns = worker.turns
         return targets
 
+    def take_unreported(self) -> list[str]:
+        """Reports for finished turns nobody has claimed, marking them claimed."""
+        reports = []
+        for worker in self.workers.values():
+            if (
+                worker.reported_turns < worker.turns
+                and worker.status not in ACTIVE
+                and worker.status != "stopped"
+            ):
+                worker.reported_turns = worker.turns
+                reports.append(format_report(worker, worker.stop_reason))
+        return reports
+
     def _start_turn(self, worker: Worker, text: str) -> None:
         worker.status = "running"
         worker._done.clear()
@@ -250,6 +264,7 @@ class SwarmManager:
         if self._awaited.get(worker.name, 0) > 0:
             # A swarm_await call returns this result; do not deliver it twice.
             worker.reported_turns = worker.turns
+        worker.stop_reason = stop_reason
         worker._done.set()
         self._changed()
         if (
@@ -257,7 +272,8 @@ class SwarmManager:
             and worker.status != "stopped"
             and self.deliver is not None
         ):
-            worker.reported_turns = worker.turns
+            # Not marked reported yet: a later swarm_await may still claim it.
+            # Deferred consumers call take_unreported() when they can deliver.
             report = format_report(worker, stop_reason)
             outcome = self.deliver(report)
             if asyncio.iscoroutine(outcome):

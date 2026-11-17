@@ -73,15 +73,18 @@ class SwarmController:
     # Delivery -----------------------------------------------------------
 
     def _deliver(self, report: str) -> None:
-        self.pending.append(report)
+        # The report itself is rebuilt at flush time: a swarm_await call made
+        # before then may have claimed it, and must not get it twice.
         self.conversation.call_later(self.flush)
 
     def flush(self) -> None:
         """Send queued reports as one prompt when the coordinator is free."""
         conversation = self.conversation
-        if not self.pending or conversation.turn == "agent" or conversation.agent is None:
+        if conversation.turn == "agent" or conversation.agent is None:
             return
-        reports, self.pending = self.pending, []
+        reports = self.manager.take_unreported()
+        if not reports:
+            return
         conversation.call_later(conversation.prompt_agent, "\n\n---\n\n".join(reports))
 
     # Slash command --------------------------------------------------------
