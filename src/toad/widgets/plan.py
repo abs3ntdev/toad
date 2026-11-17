@@ -141,6 +141,24 @@ class Plan(containers.Grid):
         self.goals = list(goals or [])
         self.set_reactive(Plan.entries, entries)
 
+    def set_meta(
+        self,
+        title: str | None = None,
+        intention: str | None = None,
+        goals: list[str] | None = None,
+    ) -> None:
+        """Update header metadata (applied on next recompose)."""
+        changed = (title, intention, list(goals or [])) != (
+            self.title,
+            self.intention,
+            self.goals,
+        )
+        self.title = title
+        self.intention = intention
+        self.goals = list(goals or [])
+        if changed:
+            self.refresh(recompose=True)
+
     @classmethod
     def meta_kwargs(cls, meta: dict[str, Any] | None) -> dict[str, Any]:
         """Extract title / intention / goals from a plan update's `_meta`."""

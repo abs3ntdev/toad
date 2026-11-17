@@ -968,21 +968,16 @@ class Conversation(containers.Vertical):
     async def on_acp_plan(self, message: acp_messages.Plan):
         from toad.widgets.plan import Plan
 
-        entries = [
-            Plan.Entry(
-                Content(entry["content"]),
-                entry.get("priority", "medium"),
-                entry.get("status", "pending"),
-            )
-            for entry in message.entries
-        ]
+        entries = [Plan.Entry.from_acp(entry) for entry in message.entries]
+        meta = Plan.meta_kwargs(message.meta)
 
         if self.contents.children and isinstance(
             (current_plan := self.contents.children[-1]), Plan
         ):
+            current_plan.set_meta(**meta)
             current_plan.entries = entries
         else:
-            await self.post(Plan(entries))
+            await self.post(Plan(entries, **meta))
 
     @on(acp_messages.ToolCallUpdate)
     @on(acp_messages.ToolCall)

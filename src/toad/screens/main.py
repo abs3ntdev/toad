@@ -189,15 +189,11 @@ class MainScreen(Screen, can_focus=False):
     @on(acp_messages.Plan)
     async def on_acp_plan(self, message: acp_messages.Plan):
         message.stop()
-        entries = [
-            Plan.Entry(
-                Content(entry["content"]),
-                entry.get("priority", "medium"),
-                entry.get("status", "pending"),
-            )
-            for entry in message.entries
-        ]
-        self.query_one("SideBar Plan", Plan).entries = entries
+        entries = [Plan.Entry.from_acp(entry) for entry in message.entries]
+        meta = Plan.meta_kwargs(message.meta)
+        plan = self.query_one("SideBar Plan", Plan)
+        plan.set_meta(**meta)
+        plan.entries = entries
 
     @on(messages.SessionUpdate)
     async def on_session_update(self, event: messages.SessionUpdate) -> None:

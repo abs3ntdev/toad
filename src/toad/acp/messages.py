@@ -56,6 +56,7 @@ class RequestPermission(AgentMessage):
 @dataclass
 class Plan(AgentMessage):
     entries: list[protocol.PlanEntry]
+    meta: dict | None = None
 
 
 @dataclass

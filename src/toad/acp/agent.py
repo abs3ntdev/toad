@@ -305,7 +305,7 @@ class Agent(AgentBase):
                 self.post_message(messages.ToolCall(update))
 
             case {"sessionUpdate": "plan", "entries": entries}:
-                self.post_message(messages.Plan(entries))
+                self.post_message(messages.Plan(entries, update.get("_meta")))
 
             case {
                 "sessionUpdate": "tool_call_update",
