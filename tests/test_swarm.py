@@ -131,3 +131,39 @@ async def test_mcp_bridge_round_trip(tmp_path):
 def test_bridge_unavailable():
     reply = Bridge("/nonexistent/sock").forward("swarm_status", {})
     assert reply["isError"]
+
+
+@pytest.mark.asyncio
+async def test_swarm_screen_lists_and_switches(tmp_path):
+    from textual.app import App
+    from textual.widgets import DataTable, Static
+
+    from toad.screens.swarm import SwarmScreen
+    from toad.swarm.controller import list_markdown
+
+    client = make_client(tmp_path)
+    manager = SwarmManager(client)
+    try:
+        assert "No swarm workers" in list_markdown(manager)
+        await manager.spawn("one", "task one")
+        await manager.spawn("two", "task two")
+        await manager.wait()
+        assert "| two | idle | 1/2 | done: task two |" in list_markdown(manager)
+
+        class A(App):
+            def on_mount(self):
+                self.push_screen(SwarmScreen(manager))
+
+        async with A().run_test() as pilot:
+            await pilot.pause()
+            screen = pilot.app.screen
+            table = screen.query_one(DataTable)
+            assert table.row_count == 2
+            body = str(screen.query_one("#swarm-transcript-body", Static).render())
+            assert "done: task one" in body
+            table.move_cursor(row=1)
+            await pilot.pause()
+            body = str(screen.query_one("#swarm-transcript-body", Static).render())
+            assert "done: task two" in body and "Plan" in body
+    finally:
+        await client.close()

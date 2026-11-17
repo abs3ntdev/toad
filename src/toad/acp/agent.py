@@ -157,6 +157,8 @@ class Agent(AgentBase):
         self._message_target: MessagePump | None = None
 
         self._terminal_count: int = 0
+        self.mcp_servers: list[protocol.McpServer] = []
+        """Client MCP servers named on session/new (e.g. the swarm tools)."""
 
         log_filename: str = generate_datetime_filename(f"{agent['name']}", ".txt")
         if log_path := os.environ.get("TOAD_LOG"):
@@ -747,7 +749,7 @@ class Agent(AgentBase):
         with self.request():
             session_new_response = api.session_new(
                 str(self.project_root_path),
-                [],
+                self.mcp_servers,
             )
         response = await session_new_response.wait()
         assert response is not None
@@ -793,7 +795,9 @@ class Agent(AgentBase):
                         self._agent_data = agent_data
 
         with self.request():
-            session_load_response = api.session_load(cwd, [], self.session_id)
+            session_load_response = api.session_load(
+                cwd, self.mcp_servers, self.session_id
+            )
         response = await session_load_response.wait()
 
         if (modes := response.get("modes", None)) is not None:

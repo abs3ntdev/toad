@@ -62,6 +62,7 @@ from toad.widgets.shell_terminal import ShellTerminal
 
 if TYPE_CHECKING:
     from toad.acp.agent import Mode
+    from toad.swarm.controller import SwarmController
     from toad.widgets.terminal import Terminal
     from toad.widgets.agent_response import AgentResponse
     from toad.widgets.agent_thought import AgentThought
@@ -372,6 +373,7 @@ class Conversation(containers.Vertical):
         self.agent_slash_commands: list[SlashCommand] = []
         self.terminals: dict[str, TerminalTool] = {}
         self._loading: Loading | None = None
+        self._swarm: SwarmController | None = None
         self._agent_response: AgentResponse | None = None
         self._agent_thought: AgentThought | None = None
         self._last_escape_time: float = monotonic()
@@ -728,6 +730,8 @@ class Conversation(containers.Vertical):
             self._directory_watcher.stop()
         if self.agent is not None:
             await self.agent.stop()
+        if self._swarm is not None:
+            await self._swarm.close()
 
         if self._agent_data is not None and self.session_start_time is not None:
             session_time = monotonic() - self.session_start_time
@@ -818,6 +822,22 @@ class Conversation(containers.Vertical):
             await asyncio.sleep(0)
             self.send_prompt_to_agent(text)
 
+    @property
+    def swarm(self) -> SwarmController | None:
+        """The swarm of worker sessions this conversation coordinates."""
+        if self._swarm is None:
+            from toad.swarm.controller import SwarmController
+
+            self._swarm = SwarmController.for_conversation(self)
+        return self._swarm
+
+    async def prompt_agent(self, text: str) -> None:
+        """Send a prompt to the agent as if the user typed it."""
+        await self.post(UserInput(text))
+        self.window.scroll_end(animate=False)
+        self._loading = await self.post(Loading("Please wait..."), loading=True)
+        self.send_prompt_to_agent(text)
+
     @work
     async def send_prompt_to_agent(self, prompt: str) -> None:
         if self.agent is not None:
@@ -850,6 +870,8 @@ class Conversation(containers.Vertical):
             stop_reason: The stop reason returned from the Agent, or `None`.
         """
         self.turn = "client"
+        if self._swarm is not None:
+            self._swarm.flush()
         if self._agent_thought is not None and self._agent_thought.loading:
             await self._agent_thought.remove()
         if self._loading is not None:
@@ -1332,6 +1354,11 @@ class Conversation(containers.Vertical):
         slash_commands = [
             SlashCommand("/toad:about", "About Toad"),
             SlashCommand(
+                "/swarm",
+                "Worker agents: spawn, list, msg, stop, view",
+                "spawn NAME TASK | list | msg NAME TEXT | stop NAME | view",
+            ),
+            SlashCommand(
                 "/toad:clear",
                 "Clear conversation window",
                 "<optional number of lines to preserve>",
@@ -1394,6 +1421,8 @@ class Conversation(containers.Vertical):
                     self._agent_session_id,
                     self._session_pk,
                 )
+                if (swarm := self.swarm) is not None:
+                    self.agent.mcp_servers = await swarm.mcp_servers()
                 await self.agent.start(self)
                 self.post_message(
                     messages.SessionUpdate("New Session", self.agent_title)
@@ -1878,6 +1907,14 @@ class Conversation(containers.Vertical):
                 be forwarded to the agent.
         """
         command, _, parameters = text[1:].partition(" ")
+        if command == "swarm":
+            if (swarm := self.swarm) is None:
+                self.notify(
+                    "Swarm needs an ACP agent", title="/swarm", severity="error"
+                )
+            else:
+                await swarm.slash(parameters)
+            return True
         if command == "toad:about":
             from toad import about
             from toad.widgets.markdown_note import MarkdownNote

@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from toad.acp.protocol import McpServer
 from toad.swarm.manager import SwarmError, SwarmManager, format_report
 
 TOOLS: list[dict[str, Any]] = [
@@ -137,7 +138,7 @@ class SwarmToolServer:
                 except OSError:
                     pass
 
-    def mcp_server(self, name: str = "toad_swarm") -> dict[str, Any]:
+    def mcp_server(self, name: str = "toad_swarm") -> McpServer:
         """The `mcpServers` entry for session/new."""
         assert self.path is not None, "start() first"
         return {
