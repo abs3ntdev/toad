@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Any
 
 from textual.app import ComposeResult
 from textual.content import Content
@@ -51,6 +52,26 @@ class Plan(containers.Grid):
         .status.status-completed {
             color: $text-success;            
         }
+        .plan-header {
+            column-span: 2;
+            text-style: bold;
+            color: $text-primary;
+        }
+        .plan-intention, .plan-goals {
+            column-span: 2;
+            color: $text-muted;
+            text-style: italic;
+        }
+        .plan-phase {
+            column-span: 2;
+            text-style: bold;
+            color: $text-accent;
+        }
+        .plan-lane {
+            column-span: 2;
+            color: $text-secondary;
+            padding-left: 1;
+        }
         .status-pending {
             opacity: 0.7;
         }          
@@ -65,6 +86,23 @@ class Plan(containers.Grid):
         content: Content
         priority: str
         status: str
+        phase: str | None = None
+        lane: str | None = None
+
+        @classmethod
+        def from_acp(cls, entry: dict[str, Any]) -> Plan.Entry:
+            """Build an Entry from an ACP plan entry, reading optional `_meta`
+            grouping (`phase`, `lane`) as sent by jcode-style todo tools."""
+            meta = entry.get("_meta") or {}
+            phase = meta.get("phase")
+            lane = meta.get("lane")
+            return cls(
+                Content(entry["content"]),
+                entry.get("priority", "medium"),
+                entry.get("status", "pending"),
+                None if phase is None else str(phase),
+                None if lane is None else str(lane),
+            )
 
         def update_status(self, status: str) -> Plan.Entry:
             """Get a new Entry with updated status.
@@ -75,7 +113,7 @@ class Plan(containers.Grid):
             Returns:
                 New Entry instance.
             """
-            return Plan.Entry(self.content, self.priority, status)
+            return replace(self, status=status)
 
     entries: reactive[list[Entry] | None] = reactive(None, recompose=True)
     all_complete: reactive[bool] = reactive(False, toggle_class="-all-complete")
@@ -89,13 +127,34 @@ class Plan(containers.Grid):
     def __init__(
         self,
         entries: list[Entry],
+        title: str | None = None,
+        intention: str | None = None,
+        goals: list[str] | None = None,
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,
     ):
         self.newly_completed: set[Plan.Entry] = set()
         super().__init__(name=name, id=id, classes=classes)
+        self.title = title
+        self.intention = intention
+        self.goals = list(goals or [])
         self.set_reactive(Plan.entries, entries)
+
+    @classmethod
+    def meta_kwargs(cls, meta: dict[str, Any] | None) -> dict[str, Any]:
+        """Extract title / intention / goals from a plan update's `_meta`."""
+        meta = meta or {}
+        plan = meta.get("plan") or {}
+        goals = meta.get("goals") or []
+        return {
+            "title": meta.get("title") or plan.get("title"),
+            "intention": meta.get("user_intention") or plan.get("user_intention"),
+            "goals": [
+                g if isinstance(g, str) else str(g.get("group") or g.get("feedback_loop") or g)
+                for g in goals
+            ],
+        }
 
     def watch_entries(self, old_entries: list[Entry], new_entries: list[Entry]) -> None:
         entry_map = {entry.content: entry for entry in old_entries}
@@ -120,7 +179,32 @@ class Plan(containers.Grid):
         if not self.entries:
             yield Static("No plan yet", classes="-no-plan")
             return
+        if self.title:
+            yield NonSelectableStatic(Content(self.title), classes="plan-header")
+        if self.intention:
+            yield NonSelectableStatic(Content(self.intention), classes="plan-intention")
+        if self.goals:
+            yield NonSelectableStatic(
+                Content("Goals: " + "; ".join(self.goals)), classes="plan-goals"
+            )
+        grouped = any(e.phase is not None or e.lane is not None for e in self.entries)
+        current_phase: str | None = None
+        current_lane: str | None = None
         for entry in self.entries:
+            if grouped:
+                if entry.phase != current_phase:
+                    current_phase = entry.phase
+                    current_lane = None
+                    if entry.phase is not None:
+                        yield NonSelectableStatic(
+                            Content(f"Phase {entry.phase}"), classes="plan-phase"
+                        )
+                if entry.lane != current_lane:
+                    current_lane = entry.lane
+                    if entry.lane is not None:
+                        yield NonSelectableStatic(
+                            Content(f"▸ {entry.lane}"), classes="plan-lane"
+                        )
             classes = f"priority-{entry.priority} status-{entry.status}"
             yield NonSelectableStatic(
                 self.render_status(entry.status),

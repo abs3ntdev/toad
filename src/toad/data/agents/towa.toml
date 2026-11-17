@@ -1,0 +1,36 @@
+# Schema defined in agent_schema.py
+# https://github.com/gfx-labs/towa
+
+identity = "towa.gfx-labs.com"
+name = "towa"
+short_name = "towa"
+url = "https://github.com/gfx-labs/towa"
+protocol = "acp"
+author_name = "GFX Labs"
+author_url = "https://github.com/gfx-labs"
+publisher_name = "GFX Labs"
+publisher_url = "https://github.com/gfx-labs"
+type = "coding"
+description = "A Go coding agent that speaks ACP natively, with todo plans and subagents."
+tags = []
+run_command."*" = "towa serve"
+
+help = '''
+# towa
+
+towa is an open source coding agent written in Go that speaks the Agent Client Protocol natively.
+
+## Configuration
+
+- **`tools.todo.enabled`**: turn the todo tool on or off. When on, towa streams its todo list to Toad as a plan.
+- **`subagents.max_depth`**: how deeply subagents may spawn further subagents.
+
+---
+
+**GitHub**: https://github.com/gfx-labs/towa
+
+'''
+
+[actions."*".install]
+command = "go install github.com/gfx-labs/towa/cmd/towa@latest"
+description = "Install towa (requires Go)"
