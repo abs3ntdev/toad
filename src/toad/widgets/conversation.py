@@ -979,6 +979,18 @@ class Conversation(containers.Vertical):
         else:
             await self.post(Plan(entries, **meta))
 
+    async def _update_subagents(self, tool_call) -> bool:
+        """Route subagent tool calls to the subagent tree, mounting it if needed."""
+        from toad.widgets.subagents import SubagentTree, is_subagent_call
+
+        tree: SubagentTree | None = getattr(self, "_subagent_tree", None)
+        if tree is None or not tree.is_attached:
+            if not is_subagent_call(tool_call):
+                return False
+            tree = self._subagent_tree = SubagentTree()
+            await self.post(tree)
+        return tree.update_tool_call(tool_call)
+
     @on(acp_messages.ToolCallUpdate)
     @on(acp_messages.ToolCall)
     async def on_acp_tool_call_update(
@@ -987,6 +999,9 @@ class Conversation(containers.Vertical):
         from toad.widgets.tool_call import ToolCall
 
         tool_call = message.tool_call
+
+        if await self._update_subagents(tool_call):
+            return
 
         if tool_call.get("status", None) in (None, "completed"):
             self._agent_thought = None
